@@ -37,56 +37,7 @@ where
 #[derive(Serialize, Clone)]
 pub struct RegistriesItem {
     pub key_path: String,
-    pub value: Option<RegistriesChiren>,
-}
-
-impl RegistriesItem {
-    fn from<T: AsRef<str>>(path: T) -> Self {
-        let path = path.as_ref();
-
-        RegistriesItem {
-            key_path: path.to_string(),
-            value: None,
-        }
-    }
-}
-
-fn fill_registry_arena(
-    item: RegistriesItem,
-    arena: Arena<RegistriesItem>,
-) -> Arena<RegistriesItem> {
-    let path = item.key_path;
-    let path_segments = path.split("\\");
-
-    // 如果注册表路径带有根节点名称，则打开相应的根节点
-    if let Some(root_key_name) = path_segments.next() {
-        let path: Vec<&str> = path_segments.collect();
-        let path = path.join("\\");
-
-        if let Some(root_key ) = match root_key_name {
-            "HKLM" | "HKEY_LOCAL_MACHINE" => Some(LOCAL_MACHINE),
-            "HKCU" | "HKEY_CURRENT_USER" => Some(CURRENT_USER),
-            _ => None,
-        } {
-            match root_key.open(path) {
-                Ok(key) => { key },
-                Err(e) => {
-                    println!("Error: {}", e);
-                }
-            }
-        }
-
-    }
-
-
-    arena
-}
-
-#[cfg(windows)]
-#[derive(Serialize, Clone)]
-pub enum RegistriesChilren {
-    Item(RegistriesItem),
-    Value(RegistriesType),
+    pub value_list: Vec<RegistriesType>,
 }
 
 #[derive(Serialize, Clone)]
@@ -99,7 +50,33 @@ fn main() {
 }
 
 fn registry_demo2() -> windows_registry::Result<()> {
+    let mut arena = Arena::new();
+
+    let root = arena.new_node(RegistriesItem {
+        key_path: String::from(r"HKLM\SOFTWARE"),
+        value_list: vec![],
+    });
+
+    let key_path = &arena[root].get().key_path;
+
+    if let Some(key) = map_root_keyname_to_registry_key(key_path) {
+        let sub_key = key.open(key_path.split("\\").next().unwrap())?;
+    }
+
     Ok(())
+}
+
+fn map_root_keyname_to_registry_key(
+    rootkey_name: impl AsRef<str>,
+) -> Option<&windows_registry::Key> {
+    let rootkey_name = rootkey_name.as_ref().to_ascii_uppercase();
+
+    match rootkey_name.as_str() {
+        "HKLM" | "HKEY_LOCAL_MACHINE" => Some(LOCAL_MACHINE),
+        "HKCU" | "HKEY_CURRENT_USER" => Some(CURRENT_USER),
+        "HKU" | "HKEY_USERS" => Some(USERS),
+        _ => None,
+    }
 }
 
 fn registry_demo() -> windows_registry::Result<()> {
