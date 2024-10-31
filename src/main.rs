@@ -31,12 +31,75 @@ where
     fn to_json(&self) -> serde_json::Result<String> {
         serde_json::to_string(&self)
     }
-
 }
 
+#[cfg(windows)]
+#[derive(Serialize, Clone)]
+pub struct RegistriesItem {
+    pub key_path: String,
+    pub value: Option<RegistriesChiren>,
+}
+
+impl RegistriesItem {
+    fn from<T: AsRef<str>>(path: T) -> Self {
+        let path = path.as_ref();
+
+        RegistriesItem {
+            key_path: path.to_string(),
+            value: None,
+        }
+    }
+}
+
+fn fill_registry_arena(
+    item: RegistriesItem,
+    arena: Arena<RegistriesItem>,
+) -> Arena<RegistriesItem> {
+    let path = item.key_path;
+    let path_segments = path.split("\\");
+
+    // 如果注册表路径带有根节点名称，则打开相应的根节点
+    if let Some(root_key_name) = path_segments.next() {
+        let path: Vec<&str> = path_segments.collect();
+        let path = path.join("\\");
+
+        if let Some(root_key ) = match root_key_name {
+            "HKLM" | "HKEY_LOCAL_MACHINE" => Some(LOCAL_MACHINE),
+            "HKCU" | "HKEY_CURRENT_USER" => Some(CURRENT_USER),
+            _ => None,
+        } {
+            match root_key.open(path) {
+                Ok(key) => { key },
+                Err(e) => {
+                    println!("Error: {}", e);
+                }
+            }
+        }
+
+    }
+
+
+    arena
+}
+
+#[cfg(windows)]
+#[derive(Serialize, Clone)]
+pub enum RegistriesChilren {
+    Item(RegistriesItem),
+    Value(RegistriesType),
+}
+
+#[derive(Serialize, Clone)]
+pub enum RegistriesType {}
+
 fn main() {
-    let _ = registry_demo();
-    indextree_demo();
+    // let _ = registry_demo();
+    // indextree_demo();
+    registry_demo2();
+}
+
+fn registry_demo2() -> windows_registry::Result<()> {
+    Ok(())
 }
 
 fn registry_demo() -> windows_registry::Result<()> {
