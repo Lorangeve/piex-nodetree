@@ -1,7 +1,7 @@
 use indextree::{Arena, NodeId};
 use serde::Serialize;
 use serde_json;
-use windows_registry::*;
+use windows_registry::{Key, Type, *};
 
 #[derive(Serialize)]
 struct TreeNode<T: Serialize> {
@@ -40,8 +40,13 @@ pub struct RegistriesItem {
     pub value_list: Vec<RegistriesType>,
 }
 
-#[derive(Serialize, Clone)]
-pub enum RegistriesType {}
+#[derive(Serialize, Clone, Debug)]
+pub enum RegistriesType {
+    U32(u32),
+    U64(u64),
+    String(String),
+    MultiString(Vec<String>),
+}
 
 fn main() {
     // let _ = registry_demo();
@@ -57,18 +62,69 @@ fn registry_demo2() -> windows_registry::Result<()> {
         value_list: vec![],
     });
 
-    let key_path = &arena[root].get().key_path;
+    let key_path = &arena[root].get().key_path.split_once("\\");
+    let (rootkey_name, key_path) = key_path.unwrap();
+    // let mut key_path = key_path.split("\\");
+    // let rootkey_name = &mut key_path.next().unwrap();
+    // let key_path: Vec<&str> = key_path.collect();
+    // let key_path = key_path.join("\\");
 
-    if let Some(key) = map_root_keyname_to_registry_key(key_path) {
-        let sub_key = key.open(key_path.split("\\").next().unwrap())?;
-    }
+    print_all_registry_key_values(
+        map_root_keyname_to_registry_key(rootkey_name).unwrap(),
+        &key_path,
+        0
+    )?;
 
     Ok(())
 }
 
-fn map_root_keyname_to_registry_key(
-    rootkey_name: impl AsRef<str>,
-) -> Option<&windows_registry::Key> {
+fn print_all_registry_key_values<'a>(key: &'a Key, path: &'a str, indent: i32) -> windows_registry::Result<()> {
+    let indent = indent + 1;
+    let key =key.open(path)?;
+    let children_keys: Vec<String> = key.keys()?.collect();
+
+    print!("{}", "\t".repeat(indent as usize));
+    if children_keys.len() == 0 {
+        for value in key.values()? {
+            println!("\t::{}: {:?}", &value.0, get_value(value.1));
+        }
+    } else {
+        for path in children_keys {
+            println!("{}:", path);
+
+            // let key = key.open(path)?;
+            print_all_registry_key_values(&key, path.as_str(), indent)?;
+        }
+    }
+
+    // if let Some(key_path_segment) = key_path.next() {
+    //     let key = Box::leak(Box::new(key.open(key_path_segment)?));
+    //     print_all_registry_key_values(key, key_path)?;
+    // } else {
+    //     for subkey_name in key.keys()? {
+    //         let sub_key = key.open(&subkey_name)?;
+    //         println!("{}:", subkey_name);
+
+    //         for value in sub_key.values()? {
+    //             println!("\t::{}: {:?}", &value.0, get_value(value.1));
+    //         }
+    //     }
+    // }
+
+    Ok(())
+}
+
+fn get_value(value: Value) -> Option<RegistriesType> {
+    match value.ty() {
+        Type::String => value.try_into().ok().map(RegistriesType::String),
+        Type::MultiString => value.try_into().ok().map(RegistriesType::MultiString),
+        Type::U32 => value.try_into().ok().map(RegistriesType::U32),
+        Type::U64 => value.try_into().ok().map(RegistriesType::U64),
+        _ => None,
+    }
+}
+
+fn map_root_keyname_to_registry_key<'a>(rootkey_name: impl AsRef<str>) -> Option<&'a Key> {
     let rootkey_name = rootkey_name.as_ref().to_ascii_uppercase();
 
     match rootkey_name.as_str() {
