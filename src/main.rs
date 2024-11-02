@@ -79,20 +79,20 @@ fn registry_demo2() -> windows_registry::Result<()> {
 }
 
 fn print_all_registry_key_values<'a>(key: &'a Key, path: &'a str, indent: i32) -> windows_registry::Result<()> {
-    let indent = indent + 1;
     let key =key.open(path)?;
     let children_keys: Vec<String> = key.keys()?.collect();
 
-    print!("{}", "\t".repeat(indent as usize));
+    let tab_repeat = "\t".repeat(indent as usize);
     if children_keys.len() == 0 {
+
         for value in key.values()? {
-            println!("\t::{}: {:?}", &value.0, get_value(value.1));
+            println!("{tab_repeat}::{}: {:?}", &value.0, get_value(value.1));
         }
     } else {
         for path in children_keys {
-            println!("{}:", path);
+            println!("{tab_repeat}{}:", path);
 
-            // let key = key.open(path)?;
+            let indent = indent + 1;
             print_all_registry_key_values(&key, path.as_str(), indent)?;
         }
     }
