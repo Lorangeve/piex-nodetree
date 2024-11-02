@@ -1,5 +1,5 @@
 [package]
-name = "rust_demo1"
+name = "rust_demo_treenode"
 version = "0.1.0"
 edition = "2021"
 

@@ -35,8 +35,90 @@ where
 }
 
 fn main() {
-    let _ = registry_demo();
-    indextree_demo();
+    // let _ = registry_demo();
+    // indextree_demo();
+    registry_demo2();
+}
+
+fn registry_demo2() -> windows_registry::Result<()> {
+    let mut arena = Arena::new();
+
+    let root = arena.new_node(RegistriesItem {
+        key_path: String::from(r"HKLM\SOFTWARE"),
+        value_list: vec![],
+    });
+
+    let key_path = &arena[root].get().key_path.split_once("\\");
+    let (rootkey_name, key_path) = key_path.unwrap();
+    // let mut key_path = key_path.split("\\");
+    // let rootkey_name = &mut key_path.next().unwrap();
+    // let key_path: Vec<&str> = key_path.collect();
+    // let key_path = key_path.join("\\");
+
+    print_all_registry_key_values(
+        map_root_keyname_to_registry_key(rootkey_name).unwrap(),
+        &key_path,
+        0
+    )?;
+
+    Ok(())
+}
+
+fn print_all_registry_key_values<'a>(key: &'a Key, path: &'a str, indent: i32) -> windows_registry::Result<()> {
+    let key =key.open(path)?;
+    let children_keys: Vec<String> = key.keys()?.collect();
+
+    let tab_repeat = "\t".repeat(indent as usize);
+    if children_keys.len() == 0 {
+
+        for value in key.values()? {
+            println!("{tab_repeat}::{}: {:?}", &value.0, get_value(value.1));
+        }
+    } else {
+        for path in children_keys {
+            println!("{tab_repeat}{}:", path);
+
+            let indent = indent + 1;
+            print_all_registry_key_values(&key, path.as_str(), indent)?;
+        }
+    }
+
+    // if let Some(key_path_segment) = key_path.next() {
+    //     let key = Box::leak(Box::new(key.open(key_path_segment)?));
+    //     print_all_registry_key_values(key, key_path)?;
+    // } else {
+    //     for subkey_name in key.keys()? {
+    //         let sub_key = key.open(&subkey_name)?;
+    //         println!("{}:", subkey_name);
+
+    //         for value in sub_key.values()? {
+    //             println!("\t::{}: {:?}", &value.0, get_value(value.1));
+    //         }
+    //     }
+    // }
+
+    Ok(())
+}
+
+fn get_value(value: Value) -> Option<RegistriesType> {
+    match value.ty() {
+        Type::String => value.try_into().ok().map(RegistriesType::String),
+        Type::MultiString => value.try_into().ok().map(RegistriesType::MultiString),
+        Type::U32 => value.try_into().ok().map(RegistriesType::U32),
+        Type::U64 => value.try_into().ok().map(RegistriesType::U64),
+        _ => None,
+    }
+}
+
+fn map_root_keyname_to_registry_key<'a>(rootkey_name: impl AsRef<str>) -> Option<&'a Key> {
+    let rootkey_name = rootkey_name.as_ref().to_ascii_uppercase();
+
+    match rootkey_name.as_str() {
+        "HKLM" | "HKEY_LOCAL_MACHINE" => Some(LOCAL_MACHINE),
+        "HKCU" | "HKEY_CURRENT_USER" => Some(CURRENT_USER),
+        "HKU" | "HKEY_USERS" => Some(USERS),
+        _ => None,
+    }
 }
 
 fn registry_demo() -> windows_registry::Result<()> {
