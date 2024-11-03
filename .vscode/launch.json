@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/${workspaceFolderBasename}.exe",
-            "args": [],
+            "args": ["HKEY_LOCAL_MACHINE\\SOFTWARE\\Autodesk\\UPI2\\{89D9326A-2506-3DAC-8592-2DBCBDC6BC22}"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
