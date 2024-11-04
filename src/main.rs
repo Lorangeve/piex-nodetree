@@ -100,12 +100,14 @@ fn print_all_registry_key_values<'a>(key: &'a Key, path: &'a str, indent: i32) -
     Ok(())
 }
 
-fn get_value(value: Value) -> Option<RegistriesType> {
-    match value.ty() {
-        Type::String => value.try_into().ok().map(RegistriesType::String),
-        Type::MultiString => value.try_into().ok().map(RegistriesType::MultiString),
-        Type::U32 => value.try_into().ok().map(RegistriesType::U32),
-        Type::U64 => value.try_into().ok().map(RegistriesType::U64),
+fn get_value(value: &Value) -> Option<RegistriesType> {
+    let r = match value.ty() {
+        // FIXME: 目前解析 String 类型时可能会出现问题（部分场景下中文 unicode 字符错误）
+        // Type::String => value.clone().try_into().ok().map(RegistriesType::String),
+        Type::String => Some(RegistriesType::String(value.clone().try_into().unwrap())),
+        Type::MultiString => value.clone().try_into().ok().map(RegistriesType::MultiString),
+        Type::U32 => value.clone().try_into().ok().map(RegistriesType::U32),
+        Type::U64 => value.clone().try_into().ok().map(RegistriesType::U64),
         _ => None,
     }
 }
