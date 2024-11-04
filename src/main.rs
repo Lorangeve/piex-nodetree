@@ -32,6 +32,21 @@ where
         serde_json::to_string(&self)
     }
 
+#[cfg(windows)]
+#[derive(Serialize, Clone)]
+pub struct RegistriesItem<'a> {
+    pub key_path: String,
+    pub value_list: Vec<RegistriesType<'a>>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub enum RegistriesType<'a> {
+    U32(u32),
+    U64(u64),
+    String(String),
+    HString,
+    Raw(&'a [u16]),
+    MultiString(Vec<String>),
 }
 
 fn main() {
@@ -64,22 +79,24 @@ fn registry_demo2() -> windows_registry::Result<()> {
     Ok(())
 }
 
-fn print_all_registry_key_values<'a>(key: &'a Key, path: &'a str, indent: i32) -> windows_registry::Result<()> {
-    let key =key.open(path)?;
+fn print_all_registry_key_values<'a>(
+    key: &'a Key,
+    path: &'a str,
+    indent: i32,
+) -> windows_registry::Result<()> {
+    let key = key.open(path)?;
     let children_keys: Vec<String> = key.keys()?.collect();
-
     let tab_repeat = "\t".repeat(indent as usize);
-    if children_keys.len() == 0 {
 
-        for value in key.values()? {
-            println!("{tab_repeat}::{}: {:?}", &value.0, get_value(value.1));
-        }
-    } else {
-        for path in children_keys {
-            println!("{tab_repeat}{}:", path);
+    for (key_name, key_value) in key.values()? {
+        println!("{tab_repeat}::{}:\t{:?}", &key_name, get_value(&key_value));
+    }
 
-            let indent = indent + 1;
-            print_all_registry_key_values(&key, path.as_str(), indent)?;
+    for path in children_keys {
+        println!("{tab_repeat}{}:", path);
+
+        if let Err(e) = print_all_registry_key_values(&key, path.as_str(), indent + 1) {
+            println!("{tab_repeat}\tError: {}", e);
         }
     }
 
@@ -104,8 +121,21 @@ fn get_value(value: &Value) -> Option<RegistriesType> {
     let r = match value.ty() {
         // FIXME: 目前解析 String 类型时可能会出现问题（部分场景下中文 unicode 字符错误）
         // Type::String => value.clone().try_into().ok().map(RegistriesType::String),
-        Type::String => Some(RegistriesType::String(value.clone().try_into().unwrap())),
-        Type::MultiString => value.clone().try_into().ok().map(RegistriesType::MultiString),
+        // Type::String => {
+        //     let a = value.clone().try_into();
+        //     match a {
+        //         Ok(s) => Some(RegistriesType::String(s)),
+        //         Err(_) => {
+        //             value.as_wide()
+        //         }
+        //     }
+        // },
+        Type::String => Some(RegistriesType::Raw(value.as_wide())),
+        Type::MultiString => value
+            .clone()
+            .try_into()
+            .ok()
+            .map(RegistriesType::MultiString),
         Type::U32 => value.clone().try_into().ok().map(RegistriesType::U32),
         Type::U64 => value.clone().try_into().ok().map(RegistriesType::U64),
         _ => None,
