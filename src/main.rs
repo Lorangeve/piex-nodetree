@@ -1,7 +1,9 @@
 use indextree::{Arena, NodeId};
 use serde::{de::value, Serialize};
 use serde_json;
+use std::string::{self, String};
 use std::{env, fmt::format, io::Read, os::windows::raw::SOCKET, process::exit};
+use std::io::{self,BufRead};
 use windows_registry::{Key, Type, *};
 
 #[derive(Serialize)]
@@ -106,7 +108,7 @@ fn print_all_registry_key_values<'a>(
 
 fn get_value(value: &Value) -> Option<RegistriesType> {
     match value.ty() {
-        Type::String => Some(RegistriesType::String(String::from_utf16_lossy(value.as_wide()))),
+        Type::String => Some(RegistriesType::String(decode_utf16_lossy(value.as_wide()))),
         Type::MultiString => value
             .clone()
             .try_into()
@@ -117,6 +119,13 @@ fn get_value(value: &Value) -> Option<RegistriesType> {
         Type::Bytes => Some(RegistriesType::Bytes),
         _ => None,
     }
+}
+
+/// 有损耗地解码 utf16
+/// 即，当读取到 \0 时直接截断并使用标准库进行 utf16 解码
+fn decode_utf16_lossy(utf16_codes: &[u16]) -> String   {
+    let utf16_codes : Vec<u16> = utf16_codes.into_iter().cloned().take_while(|&x| x != 0).collect();
+    String::from_utf16(utf16_codes.as_slice()).unwrap()
 }
 
 fn map_root_keyname_to_registry_key<'a>(rootkey_name: impl AsRef<str>) -> Option<&'a Key> {
