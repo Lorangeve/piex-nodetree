@@ -44,9 +44,10 @@ pub enum RegistriesType<'a> {
     U32(u32),
     U64(u64),
     String(String),
-    HString,
-    Raw(&'a [u16]),
     MultiString(Vec<String>),
+    Bytes,
+    Raw2(&'a [u16]),
+    Raw(String)
 }
 
 fn main() {
@@ -118,19 +119,25 @@ fn print_all_registry_key_values<'a>(
 }
 
 fn get_value(value: &Value) -> Option<RegistriesType> {
-    let r = match value.ty() {
-        // FIXME: 目前解析 String 类型时可能会出现问题（部分场景下中文 unicode 字符错误）
-        // Type::String => value.clone().try_into().ok().map(RegistriesType::String),
-        // Type::String => {
-        //     let a = value.clone().try_into();
-        //     match a {
-        //         Ok(s) => Some(RegistriesType::String(s)),
-        //         Err(_) => {
-        //             value.as_wide()
-        //         }
-        //     }
-        // },
-        Type::String => Some(RegistriesType::Raw(value.as_wide())),
+    match value.ty() {
+        Type::String => Some(
+            value
+                .clone()
+                .try_into()
+                .map(RegistriesType::String)
+                // .unwrap_or_else(|_| RegistriesType::Raw(value.as_wide())),
+                // .unwrap_or_else(|_| {
+                //     RegistriesType::Raw(
+                //         value
+                //             .as_wide()
+                //             .iter()
+                //             .map(|b| format!("{b:04X}"))
+                //             .collect::<Vec<String>>()
+                //             .join("\x20" /* 空格 */),
+                .unwrap_or_else(|_| RegistriesType::String(String::from_utf16(value.as_wide()).unwrap_or_else(|_| 
+                    panic!("{}", value.as_wide().iter().map(|b| format!("{b:04X}")).collect::<Vec<String>>().join("\x20" /* 空格 */))
+                ))),
+        ),
         Type::MultiString => value
             .clone()
             .try_into()
@@ -138,6 +145,7 @@ fn get_value(value: &Value) -> Option<RegistriesType> {
             .map(RegistriesType::MultiString),
         Type::U32 => value.clone().try_into().ok().map(RegistriesType::U32),
         Type::U64 => value.clone().try_into().ok().map(RegistriesType::U64),
+        Type::Bytes => Some(RegistriesType::Bytes),
         _ => None,
     }
 }
