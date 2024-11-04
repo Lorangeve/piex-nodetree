@@ -1,7 +1,7 @@
 use indextree::{Arena, NodeId};
 use serde::{de::value, Serialize};
 use serde_json;
-use std::{env, io::Read};
+use std::{env, io::Read, os::windows::raw::SOCKET};
 use windows_registry::{Key, Type, *};
 
 #[derive(Serialize)]
@@ -114,7 +114,8 @@ fn print_all_registry_key_values<'a>(
 fn get_value(value: &Value) -> Option<RegistriesType> {
     let r = match value.ty() {
         // FIXME: 目前解析 String 类型时可能会出现问题（部分场景下中文 unicode 字符错误）
-        Type::String => value.clone().try_into().ok().map(RegistriesType::String),
+        // Type::String => value.clone().try_into().ok().map(RegistriesType::String),
+        Type::String => Some(RegistriesType::String(value.clone().try_into().unwrap())),
         Type::MultiString => value.clone().try_into().ok().map(RegistriesType::MultiString),
         Type::U32 => value.clone().try_into().ok().map(RegistriesType::U32),
         Type::U64 => value.clone().try_into().ok().map(RegistriesType::U64),
