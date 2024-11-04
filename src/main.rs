@@ -106,24 +106,7 @@ fn print_all_registry_key_values<'a>(
 
 fn get_value(value: &Value) -> Option<RegistriesType> {
     match value.ty() {
-        Type::String => Some(
-            value
-                .clone()
-                .try_into()
-                .map(RegistriesType::String)
-                // .unwrap_or_else(|_| RegistriesType::Raw(value.as_wide())),
-                // .unwrap_or_else(|_| {
-                //     RegistriesType::Raw(
-                //         value
-                //             .as_wide()
-                //             .iter()
-                //             .map(|b| format!("{b:04X}"))
-                //             .collect::<Vec<String>>()
-                //             .join("\x20" /* 空格 */),
-                .unwrap_or_else(|_| RegistriesType::String(String::from_utf16(value.as_wide()).unwrap_or_else(|_| 
-                    panic!("{}", value.as_wide().iter().map(|b| format!("{b:04X}")).collect::<Vec<String>>().join("\x20" /* 空格 */))
-                ))),
-        ),
+        Type::String => Some(RegistriesType::String(String::from_utf16_lossy(value.as_wide()))),
         Type::MultiString => value
             .clone()
             .try_into()
