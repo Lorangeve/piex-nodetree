@@ -71,11 +71,21 @@ fn registry_demo2() -> windows_registry::Result<()> {
     // let key_path: Vec<&str> = key_path.collect();
     // let key_path = key_path.join("\\");
 
-    print_all_registry_key_values(
-        map_root_keyname_to_registry_key(rootkey_name).unwrap(),
-        &key_path,
-        0
+    fill_regkey_to_arena(
+        root_key(rootkey_name).unwrap_or(LOCAL_MACHINE),
+        key_path,
+        &root,
+        &mut arena,
     )?;
+
+    let tree_node = TreeNode::from_node_id(root, &arena).unwrap();
+
+    if is_print_json {
+        let json_str = tree_node.to_pretty_json().unwrap();
+        println!("{}", json_str);
+    } else {
+        println!("{:?}", root.debug_pretty_print(&arena));
+    }
 
     Ok(())
 }
@@ -89,15 +99,22 @@ fn print_all_registry_key_values<'a>(
     let children_keys: Vec<String> = key.keys()?.collect();
     let tab_repeat = "\t".repeat(indent as usize);
 
+    let value_map = &mut arena[*node].get_mut().value_map;
     for (key_name, key_value) in key.values()? {
-        println!("{tab_repeat}::{}:\t{:?}", &key_name, get_value(&key_value));
+        let value = get_value(key_value);
+        value_map.insert(key_name, value);
     }
 
-    for path in children_keys {
-        println!("{tab_repeat}{}:", path);
+    for children_key_name in children_keys {
+        let child_node = arena.new_node(RegistriesItem {
+            key_path: children_key_name.clone(),
+            value_map: HashMap::new(),
+        });
 
-        if let Err(e) = print_all_registry_key_values(&key, path.as_str(), indent + 1) {
-            println!("{tab_repeat}\tError: {}", e);
+        node.append(child_node, arena);
+
+        if let Err(e) = fill_regkey_to_arena(&key, &children_key_name, &child_node, arena) {
+            eprintln!("{}, Error: {}", &children_key_name, e);
         }
     }
 
@@ -140,7 +157,8 @@ fn decode_utf16_lossy(utf16_codes: &[u16]) -> String   {
     String::from_utf16(utf16_codes.as_slice()).unwrap()
 }
 
-fn map_root_keyname_to_registry_key<'a>(rootkey_name: impl AsRef<str>) -> Option<&'a Key> {
+/// 将 `key_name` 字符串映射到**注册表键**
+fn root_key<'a>(rootkey_name: impl AsRef<str>) -> Option<&'a Key> {
     let rootkey_name = rootkey_name.as_ref().to_ascii_uppercase();
 
     match rootkey_name.as_str() {
