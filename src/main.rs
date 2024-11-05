@@ -1,8 +1,8 @@
 use indextree::{Arena, NodeId};
-use serde::{de::value, Serialize};
+use serde::Serialize;
 use serde_json;
-use std::env;
 use std::string::String;
+use std::{collections::HashMap, env};
 use windows_registry::{Key, Type, *};
 
 #[derive(Serialize)]
@@ -43,7 +43,7 @@ where
 #[derive(Serialize, Clone, Debug)]
 pub struct RegistriesItem {
     pub key_path: String,
-    pub value_list: Vec<RegistriesType>,
+    pub value_map: HashMap<String, Option<RegistriesType>>,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -58,74 +58,67 @@ pub enum RegistriesType {
 fn main() {
     // let _ = registry_demo();
     // indextree_demo();
-    dbg!(registry_demo2());
+    eprintln!("{:?}", registry_demo2());
 }
 
 fn registry_demo2() -> windows_registry::Result<()> {
     let mut arena = Arena::new();
 
     let key_path = env::args().nth(1).unwrap_or(String::from(r"HKLM\SOFTWARE"));
+    let is_print_json = env::args().nth(2).map(|x| x == "json").unwrap_or(false);
 
     let root = arena.new_node(RegistriesItem {
         key_path,
-        value_list: vec![],
+        value_map: HashMap::new(),
     });
 
     let key_path = arena[root].get().key_path.clone();
     let (rootkey_name, key_path) = key_path.split_once("\\").unwrap();
 
-    print_all_registry_key_values(
+    fill_regkey_to_arena(
         map_root_keyname_to_registry_key(rootkey_name).unwrap(),
         key_path,
         &root,
         &mut arena,
-        0,
     )?;
 
     let tree_node = TreeNode::from_node_id(root, &arena).unwrap();
-    // let json_str = tree_node.to_json().unwrap();
     let json_str = tree_node.to_pretty_json().unwrap();
 
-    // println!("{:?}", root.debug_pretty_print(&arena));
-    println!("{}", json_str);
+    if is_print_json {
+        println!("{}", json_str);
+    } else {
+        println!("{:?}", root.debug_pretty_print(&arena));
+    }
 
     Ok(())
 }
 
-fn print_all_registry_key_values<'a>(
+fn fill_regkey_to_arena<'a>(
     key: &'a Key,
     path: impl AsRef<str>,
     node: &NodeId,
     arena: &mut Arena<RegistriesItem>,
-    indent: usize,
 ) -> windows_registry::Result<()> {
     let key = key.open(&path)?;
     let children_keys: Vec<String> = key.keys()?.collect();
-    let tab_repeat = "\t".repeat(indent);
 
-    let mut value_list = vec![];
+    let mut value_list = HashMap::new();
     for (key_name, key_value) in key.values()? {
         let value = get_value(key_value);
-
-        value_list.push(RegistriesType::String(key_name.to_string()));
-
-        println!("{tab_repeat}::{}:\t{:?}", &key_name, value);
+        value_list.insert(key_name, value);
     }
 
-    node.append(
-        arena.new_node(RegistriesItem {
-            key_path: path.as_ref().to_string(),
-            value_list,
-        }),
-        arena,
-    );
-
     for path in children_keys {
-        println!("{tab_repeat}{}:", path);
+        let new_child = arena.new_node(RegistriesItem {
+            key_path: path.clone(),
+            value_map: value_list.clone(),
+        });
 
-        if let Err(e) = print_all_registry_key_values(&key, path.as_str(), node, arena, indent + 1)
-        {
-            println!("{tab_repeat}\tError: {}", e);
+        node.append(new_child, arena);
+
+        if let Err(e) = fill_regkey_to_arena(&key, path.as_str(), node, arena) {
+            eprintln!("Error: {}", e);
         }
     }
 
