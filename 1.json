@@ -1,0 +1,79 @@
+{
+  "data": {
+    "key_path": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Huorong",
+    "value_map": {}
+  },
+  "children": [
+    {
+      "data": {
+        "key_path": "ARPProt",
+        "value_map": {}
+      },
+      "children": []
+    },
+    {
+      "data": {
+        "key_path": "AutoRuns",
+        "value_map": {}
+      },
+      "children": []
+    },
+    {
+      "data": {
+        "key_path": "CrossUpgrade",
+        "value_map": {}
+      },
+      "children": []
+    },
+    {
+      "data": {
+        "key_path": "HRSword",
+        "value_map": {}
+      },
+      "children": []
+    },
+    {
+      "data": {
+        "key_path": "PopBlock",
+        "value_map": {}
+      },
+      "children": []
+    },
+    {
+      "data": {
+        "key_path": "Sysclean",
+        "value_map": {}
+      },
+      "children": []
+    },
+    {
+      "data": {
+        "key_path": "Sysdiag",
+        "value_map": {}
+      },
+      "children": []
+    },
+    {
+      "data": {
+        "key_path": "app",
+        "value_map": {
+          "InstallPath": {
+            "String": "C:\\Program Files\\Huorong\\Sysdiag"
+          }
+        }
+      },
+      "children": []
+    },
+    {
+      "data": {
+        "key_path": "WSC",
+        "value_map": {
+          "InstallPath": {
+            "String": "C:\\Program Files\\Huorong\\Sysdiag"
+          }
+        }
+      },
+      "children": []
+    }
+  ]
+}
