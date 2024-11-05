@@ -1,9 +1,8 @@
 use indextree::{Arena, NodeId};
 use serde::{de::value, Serialize};
 use serde_json;
-use std::io::{self, BufRead};
-use std::string::{self, String};
-use std::{env, fmt::format, io::Read, os::windows::raw::SOCKET, process::exit};
+use std::env;
+use std::string::String;
 use windows_registry::{Key, Type, *};
 
 #[derive(Serialize)]
@@ -34,10 +33,14 @@ where
     fn to_json(&self) -> serde_json::Result<String> {
         serde_json::to_string(&self)
     }
+
+    fn to_pretty_json(&self) -> serde_json::Result<String> {
+        serde_json::to_string_pretty(&self)
+    }
 }
 
 #[cfg(windows)]
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 pub struct RegistriesItem {
     pub key_path: String,
     pub value_list: Vec<RegistriesType>,
@@ -68,14 +71,23 @@ fn registry_demo2() -> windows_registry::Result<()> {
         value_list: vec![],
     });
 
-    let key_path = &arena[root].get().key_path.split_once("\\");
-    let (rootkey_name, key_path) = key_path.unwrap();
+    let key_path = arena[root].get().key_path.clone();
+    let (rootkey_name, key_path) = key_path.split_once("\\").unwrap();
 
     print_all_registry_key_values(
         map_root_keyname_to_registry_key(rootkey_name).unwrap(),
-        &key_path,
+        key_path,
+        &root,
+        &mut arena,
         0,
     )?;
+
+    let tree_node = TreeNode::from_node_id(root, &arena).unwrap();
+    // let json_str = tree_node.to_json().unwrap();
+    let json_str = tree_node.to_pretty_json().unwrap();
+
+    // println!("{:?}", root.debug_pretty_print(&arena));
+    println!("{}", json_str);
 
     Ok(())
 }
@@ -83,20 +95,36 @@ fn registry_demo2() -> windows_registry::Result<()> {
 fn print_all_registry_key_values<'a>(
     key: &'a Key,
     path: impl AsRef<str>,
-    indent: i32,
+    node: &NodeId,
+    arena: &mut Arena<RegistriesItem>,
+    indent: usize,
 ) -> windows_registry::Result<()> {
-    let key = key.open(path)?;
+    let key = key.open(&path)?;
     let children_keys: Vec<String> = key.keys()?.collect();
-    let tab_repeat = "\t".repeat(indent as usize);
+    let tab_repeat = "\t".repeat(indent);
 
+    let mut value_list = vec![];
     for (key_name, key_value) in key.values()? {
-        println!("{tab_repeat}::{}:\t{:?}", &key_name, get_value(key_value));
+        let value = get_value(key_value);
+
+        value_list.push(RegistriesType::String(key_name.to_string()));
+
+        println!("{tab_repeat}::{}:\t{:?}", &key_name, value);
     }
+
+    node.append(
+        arena.new_node(RegistriesItem {
+            key_path: path.as_ref().to_string(),
+            value_list,
+        }),
+        arena,
+    );
 
     for path in children_keys {
         println!("{tab_repeat}{}:", path);
 
-        if let Err(e) = print_all_registry_key_values(&key, path.as_str(), indent + 1) {
+        if let Err(e) = print_all_registry_key_values(&key, path.as_str(), node, arena, indent + 1)
+        {
             println!("{tab_repeat}\tError: {}", e);
         }
     }
@@ -120,7 +148,7 @@ fn get_value(value: Value) -> Option<RegistriesType> {
 }
 
 /// 有损耗地解码 utf16
-/// 即，当读取到 \0 时直接截断并使用标准库进行 utf16 解码
+/// 即，当读取到 `\0` 时直接截断并使用标准库进行 utf16 解码
 fn decode_utf16_lossy(utf16_codes: &[u16]) -> String {
     let utf16_codes: Vec<u16> = utf16_codes
         .into_iter()
@@ -130,6 +158,7 @@ fn decode_utf16_lossy(utf16_codes: &[u16]) -> String {
     String::from_utf16(utf16_codes.as_slice()).unwrap()
 }
 
+/// 将 `key_name` 字符串映射到**注册表键**
 fn map_root_keyname_to_registry_key<'a>(rootkey_name: impl AsRef<str>) -> Option<&'a Key> {
     let rootkey_name = rootkey_name.as_ref().to_ascii_uppercase();
 
