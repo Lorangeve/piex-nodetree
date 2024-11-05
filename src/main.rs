@@ -1,9 +1,9 @@
 use indextree::{Arena, NodeId};
 use serde::{de::value, Serialize};
 use serde_json;
+use std::io::{self, BufRead};
 use std::string::{self, String};
 use std::{env, fmt::format, io::Read, os::windows::raw::SOCKET, process::exit};
-use std::io::{self,BufRead};
 use windows_registry::{Key, Type, *};
 
 #[derive(Serialize)]
@@ -38,20 +38,18 @@ where
 
 #[cfg(windows)]
 #[derive(Serialize, Clone)]
-pub struct RegistriesItem<'a> {
+pub struct RegistriesItem {
     pub key_path: String,
-    pub value_list: Vec<RegistriesType<'a>>,
+    pub value_list: Vec<RegistriesType>,
 }
 
 #[derive(Serialize, Clone, Debug)]
-pub enum RegistriesType<'a> {
+pub enum RegistriesType {
     U32(u32),
     U64(u64),
     String(String),
     MultiString(Vec<String>),
     Bytes,
-    Raw2(&'a [u16]),
-    Raw(String)
 }
 
 fn main() {
@@ -84,7 +82,7 @@ fn registry_demo2() -> windows_registry::Result<()> {
 
 fn print_all_registry_key_values<'a>(
     key: &'a Key,
-    path: &'a str,
+    path: impl AsRef<str>,
     indent: i32,
 ) -> windows_registry::Result<()> {
     let key = key.open(path)?;
@@ -92,7 +90,7 @@ fn print_all_registry_key_values<'a>(
     let tab_repeat = "\t".repeat(indent as usize);
 
     for (key_name, key_value) in key.values()? {
-        println!("{tab_repeat}::{}:\t{:?}", &key_name, get_value(&key_value));
+        println!("{tab_repeat}::{}:\t{:?}", &key_name, get_value(key_value));
     }
 
     for path in children_keys {
@@ -106,7 +104,7 @@ fn print_all_registry_key_values<'a>(
     Ok(())
 }
 
-fn get_value(value: &Value) -> Option<RegistriesType> {
+fn get_value(value: Value) -> Option<RegistriesType> {
     match value.ty() {
         Type::String => Some(RegistriesType::String(decode_utf16_lossy(value.as_wide()))),
         Type::MultiString => value
@@ -114,8 +112,8 @@ fn get_value(value: &Value) -> Option<RegistriesType> {
             .try_into()
             .ok()
             .map(RegistriesType::MultiString),
-        Type::U32 => value.clone().try_into().ok().map(RegistriesType::U32),
-        Type::U64 => value.clone().try_into().ok().map(RegistriesType::U64),
+        Type::U32 => value.try_into().ok().map(RegistriesType::U32),
+        Type::U64 => value.try_into().ok().map(RegistriesType::U64),
         Type::Bytes => Some(RegistriesType::Bytes),
         _ => None,
     }
@@ -123,8 +121,12 @@ fn get_value(value: &Value) -> Option<RegistriesType> {
 
 /// 有损耗地解码 utf16
 /// 即，当读取到 \0 时直接截断并使用标准库进行 utf16 解码
-fn decode_utf16_lossy(utf16_codes: &[u16]) -> String   {
-    let utf16_codes : Vec<u16> = utf16_codes.into_iter().cloned().take_while(|&x| x != 0).collect();
+fn decode_utf16_lossy(utf16_codes: &[u16]) -> String {
+    let utf16_codes: Vec<u16> = utf16_codes
+        .into_iter()
+        .cloned()
+        .take_while(|&x| x != 0)
+        .collect();
     String::from_utf16(utf16_codes.as_slice()).unwrap()
 }
 
