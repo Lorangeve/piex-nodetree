@@ -39,11 +39,11 @@ where
 }
 
 // 定义 MakeTree 特征，使用泛型参数 T
-pub trait MakeTree<T, I> {
+pub trait MakeTree<T> {
     type Error;
 
-    fn make_tree(speed: T) -> Result<TreeNode<I>, Self::Error>
+    fn make_tree(speed: T) -> Result<TreeNode<T>, Self::Error>
     where
-        I: Serialize + Clone,
+        T: Serialize + Clone,
         Self::Error: Error;
 }

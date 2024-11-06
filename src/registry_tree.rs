@@ -6,29 +6,36 @@ use windows_registry::{Key, Result, Type, *};
 #[cfg(windows)]
 #[derive(Serialize, Clone, Debug)]
 pub struct RegistriesItem {
-    pub key_path: String,
-    pub value_map: HashMap<String, Option<RegistriesType>>,
+    pub(crate) key_path: String,
+    pub(crate) value_map: HashMap<String, Option<RegistriesData>>,
+}
+
+impl RegistriesItem {
+    pub fn new(key_path: String) -> Self {
+        RegistriesItem {
+            key_path,
+            value_map: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Clone, Debug)]
-pub enum RegistriesType {
+pub enum RegistriesData {
     U32(u32),
     U64(u64),
     String(String),
     MultiString(Vec<String>),
-    Bytes,
+    Bytes(Vec<u8>),
+    Raw(u32),
 }
 
-impl MakeTree<String, RegistriesItem> for RegistriesItem {
+impl MakeTree<RegistriesItem> for RegistriesItem {
     type Error = windows_result::Error;
 
-    fn make_tree(key_path: String) -> Result<TreeNode<RegistriesItem>> {
+    fn make_tree(speed: RegistriesItem) -> Result<TreeNode<RegistriesItem>> {
         let mut arena = Arena::new();
 
-        let root = arena.new_node(RegistriesItem {
-            key_path: key_path,
-            value_map: HashMap::new(),
-        });
+        let root = arena.new_node(speed);
 
         let key_path = arena[root].get().key_path.clone();
         let (rootkey_name, key_path) = key_path.split_once("\\").unwrap();
@@ -57,7 +64,7 @@ fn fill_regkey_to_arena<'a>(
 
     let value_map = &mut arena[*node].get_mut().value_map;
     for (key_name, key_value) in key.values()? {
-        let value = get_value(key_value);
+        let value = key_value.try_into().ok();
         value_map.insert(key_name, value);
     }
 
@@ -77,19 +84,26 @@ fn fill_regkey_to_arena<'a>(
     Ok(())
 }
 
-fn get_value(value: Value) -> Option<RegistriesType> {
-    match value.ty() {
-        Type::String => Some(RegistriesType::String(decode_utf16_lossy(value.as_wide()))),
-        Type::MultiString => value
-            .clone()
-            .try_into()
-            .ok()
-            .map(RegistriesType::MultiString),
-        Type::U32 => value.try_into().ok().map(RegistriesType::U32),
-        Type::U64 => value.try_into().ok().map(RegistriesType::U64),
-        Type::Bytes => Some(RegistriesType::Bytes),
-        _ => None,
+impl TryFrom<Value> for RegistriesData {
+    type Error = windows_result::Error;
+
+    fn try_from(value: Value) -> std::result::Result<Self, Self::Error> {
+        match value.ty() {
+            Type::String => Ok(RegistriesData::String(decode_utf16_lossy(value.as_wide()))),
+            Type::MultiString => value.clone().try_into().map(RegistriesData::MultiString),
+            Type::ExpandString => Ok(RegistriesData::String(decode_utf16_lossy(value.as_wide()))),
+            Type::U32 => value.try_into().map(RegistriesData::U32),
+            Type::U64 => value.try_into().map(RegistriesData::U64),
+            Type::Bytes => Ok(RegistriesData::Bytes(
+                slice_u16_to_u8(value.as_wide()).to_vec(),
+            )),
+            Type::Other(data) => Ok(RegistriesData::Raw(data)),
+        }
     }
+}
+
+fn slice_u16_to_u8(slice: &[u16]) -> &[u8] {
+    unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const u8, slice.len() * 2) }
 }
 
 /// 有损耗地解码 utf16
