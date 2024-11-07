@@ -109,12 +109,13 @@ fn slice_u16_to_u8(slice: &[u16]) -> &[u8] {
 /// 有损耗地解码 utf16
 /// 即，当读取到 `\0` 时直接截断并使用标准库进行 utf16 解码
 fn decode_utf16_lossy(utf16_codes: &[u16]) -> String {
-    let utf16_codes: Vec<u16> = utf16_codes
-        .into_iter()
-        .cloned()
-        .take_while(|&x| x != 0)
-        .collect();
-    String::from_utf16(utf16_codes.as_slice()).unwrap()
+    // 查找第一个 `0` 的位置，或者数组的末尾
+    let end_pos = utf16_codes.iter()
+        .position(|&x| x == 0)
+        .unwrap_or(utf16_codes.len());
+
+    // 截取到 `end_pos` 并进行 UTF-16 解码
+    String::from_utf16(&utf16_codes[..end_pos]).unwrap()
 }
 
 /// 将 `key_name` 字符串映射到**注册表键**
