@@ -1,0 +1,2 @@
+[alias]
+example_print = ["run", "--example", "print_registry_json"]

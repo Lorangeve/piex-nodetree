@@ -7,7 +7,7 @@ fn main() {
 
     if let Ok(tree_node) = RegistriesItem::make_tree(RegistriesItem::new(key_path)) {
         // let json_str = tree_node.to_pretty_json().unwrap();
-        let json_str = tree_node.to_json();
-        println!("{:?}", json_str);
+        let json_str = tree_node.to_json().unwrap();
+        println!("{}", json_str);
     }
 }
