@@ -1,5 +1,6 @@
 use crate::tree::*;
 use serde::Serialize;
+use windows_result::HRESULT;
 use std::collections::HashMap;
 use windows_registry::{Key, Result, Type, *};
 
@@ -38,18 +39,21 @@ impl MakeTree<RegistriesItem> for RegistriesItem {
         let root = arena.new_node(speed);
 
         let key_path = arena[root].get().key_path.clone();
-        let (rootkey_name, key_path) = key_path.split_once("\\").unwrap();
 
-        fill_regkey_to_arena(
-            root_key(rootkey_name).unwrap_or(LOCAL_MACHINE),
-            key_path,
-            &root,
-            &mut arena,
-        )?;
+        if let Some((rootkey_name, key_path)) = key_path.split_once("\\") {
+            fill_regkey_to_arena(
+                root_key(rootkey_name).unwrap_or(LOCAL_MACHINE),
+                key_path,
+                &root,
+                &mut arena,
+            )?;
 
-        let tree_node = TreeNode::from_node_id(root, &arena).unwrap();
+            let tree_node = TreeNode::from_node_id(root, &arena).unwrap();
 
-        Ok(tree_node)
+            Ok(tree_node)
+        } else {
+            Err(windows_result::Error::new(HRESULT(1), "注册表路径错误！"))
+        }
     }
 }
 
@@ -110,7 +114,8 @@ fn slice_u16_to_u8(slice: &[u16]) -> &[u8] {
 /// 即，当读取到 `\0` 时直接截断并使用标准库进行 utf16 解码
 fn decode_utf16_lossy(utf16_codes: &[u16]) -> String {
     // 查找第一个 `0` 的位置，或者数组的末尾
-    let end_pos = utf16_codes.iter()
+    let end_pos = utf16_codes
+        .iter()
         .position(|&x| x == 0)
         .unwrap_or(utf16_codes.len());
 
@@ -127,5 +132,33 @@ fn root_key<'a>(rootkey_name: impl AsRef<str>) -> Option<&'a Key> {
         "HKCU" | "HKEY_CURRENT_USER" => Some(CURRENT_USER),
         "HKU" | "HKEY_USERS" => Some(USERS),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_utf16_lossy_test() {
+        // Arrange
+        let utf16_codes: &[u16] = &[
+            0x0041, 0x0075, 0x0074, 0x006F, 0x0064, 0x0065, 0x0073, 0x006B, 0x0020, 0x0041, 0x0075,
+            0x0074, 0x006F, 0x0043, 0x0041, 0x0044, 0x0020, 0x0032, 0x0030, 0x0032, 0x0033, 0x0020,
+            0x002D, 0x0020, 0x7B80, 0x4F53, 0x4E2D, 0x6587, 0x0020, 0x0028, 0x0053, 0x0069, 0x006D,
+            0x0070, 0x006C, 0x0069, 0x0066, 0x0069, 0x0065, 0x0064, 0x0020, 0x0043, 0x0068, 0x0069,
+            0x006E, 0x0065, 0x0073, 0x0065, 0x0029, 0x0000, 0x736D, 0x0069, 0xA28C, 0x0FCB, 0x24EB,
+            0x9000, 0xDA20, 0x0000,
+        ];
+
+        // Act
+        let code = decode_utf16_lossy(utf16_codes);
+        println!("{}", &code);
+
+        // Assert
+        assert_eq!(
+            code,
+            "Autodesk AutoCAD 2023 - 简体中文 (Simplified Chinese)"
+        );
     }
 }
