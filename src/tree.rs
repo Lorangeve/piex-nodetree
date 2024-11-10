@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{clone, error::Error};
 
 pub use indextree::{Arena, NodeId};
 use serde::Serialize;
@@ -18,7 +18,8 @@ where
     // 自定义转换函数，用于将 NodeId 转换为 TreeNode
     pub fn from_node_id(node: NodeId, arena: &Arena<T>) -> Option<TreeNode<T>> {
         // 获取节点数据并克隆
-        let data = arena[node].get().clone();
+        // let data = arena[node].get().clone();
+        let data = arena.get(node)?.get().to_owned();
 
         // 递归构建子节点列表
         let children: Vec<TreeNode<T>> = node

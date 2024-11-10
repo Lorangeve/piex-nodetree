@@ -1,8 +1,8 @@
 use crate::tree::*;
 use serde::Serialize;
-use windows_result::HRESULT;
 use std::collections::HashMap;
 use windows_registry::{Key, Result, Type, *};
+use windows_result::HRESULT;
 
 #[cfg(windows)]
 #[derive(Serialize, Clone, Debug)]
@@ -52,6 +52,7 @@ impl MakeTree<RegistriesItem> for RegistriesItem {
 
             Ok(tree_node)
         } else {
+            // TODO: 不应该使用 HRESULT(1) 作HRES错误码，而是使用自定义的错误类型
             Err(windows_result::Error::new(HRESULT(1), "注册表路径错误！"))
         }
     }
