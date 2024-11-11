@@ -1,14 +1,68 @@
-use crate::tree::*;
-use serde::Serialize;
-use std::collections::HashMap;
-use windows_registry::{Key, Result, Type, *};
-use windows_result::HRESULT;
+use std::{cmp, collections::HashMap};
 
-#[cfg(windows)]
+pub use crate::tree::MakeTree;
+use crate::tree::*;
+
+use indextree::{Arena, NodeId};
+use serde::Serialize;
+use windows_registry::{Key, Type, *};
+
+#[derive(Debug)]
+pub struct RegistriesTree {
+    pub root: NodeId,
+    pub arena: Arena<RegistriesItem>,
+}
+
 #[derive(Serialize, Clone, Debug)]
 pub struct RegistriesItem {
-    pub(crate) key_path: String,
-    pub(crate) value_map: HashMap<String, Option<RegistriesData>>,
+    pub key_path: String,
+    pub value_map: HashMap<String, Option<RegistriesData>>,
+}
+
+impl std::fmt::Display for RegistriesItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // 打印 key_path
+        writeln!(f, "key_path: {}", self.key_path)?;
+
+        // 遍历 value_map 并打印每个键值对
+        for (key, value) in &self.value_map {
+            match value {
+                Some(data) => {
+                    if let RegistriesData::Bytes(bytes) = data {
+                        let edge = bytes.len().saturating_sub(1);
+                        let endpos = cmp::min(edge, 10);
+                        let is_summary = endpos < edge;
+
+                        writeln!(
+                            f,
+                            "\t- {}:\t Bytes({}{})",
+                            key,
+                            bytes
+                                .iter()
+                                .take(endpos)
+                                .map(|&b| format!("0x{:02X}", b))
+                                .collect::<Vec<String>>()
+                                .join(","),
+                            if is_summary { "..." } else { "" }
+                        )?
+                    } else {
+                        writeln!(f, "\t- {}:\t{:?}", key, data)?
+                    }
+                }
+                None => writeln!(f, "\t- {}: None", key)?,
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for RegistriesTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}", self.to_pretty_tree())?;
+
+        Ok(())
+    }
 }
 
 impl RegistriesItem {
@@ -30,15 +84,11 @@ pub enum RegistriesData {
     Raw(u32),
 }
 
-impl MakeTree<RegistriesItem> for RegistriesItem {
-    type Error = windows_result::Error;
-
-    fn make_tree(speed: RegistriesItem) -> Result<TreeNode<RegistriesItem>> {
+impl MakeTree<RegistriesItem> for RegistriesTree {
+    fn make_tree(speed: RegistriesItem) -> std::result::Result<Self, MakeTreeError> {
         let mut arena = Arena::new();
-
         let root = arena.new_node(speed);
-
-        let key_path = arena[root].get().key_path.clone();
+        let key_path = arena.get(root).unwrap().get().key_path.to_owned();
 
         if let Some((rootkey_name, key_path)) = key_path.split_once("\\") {
             fill_regkey_to_arena(
@@ -46,15 +96,32 @@ impl MakeTree<RegistriesItem> for RegistriesItem {
                 key_path,
                 &root,
                 &mut arena,
-            )?;
+            )
+            .map_err(|e| MakeTreeError(e.message()))?;
 
-            let tree_node = TreeNode::from_node_id(root, &arena).unwrap();
-
-            Ok(tree_node)
+            Ok(RegistriesTree { root, arena })
         } else {
-            // TODO: 不应该使用 HRESULT(1) 作HRES错误码，而是使用自定义的错误类型
-            Err(windows_result::Error::new(HRESULT(1), "注册表路径错误！"))
+            Err(MakeTreeError("注册表路径错误！".to_owned()))
         }
+    }
+}
+
+impl RegistriesTree {
+    pub fn to_json(&self) -> String {
+        TreeNode::from_node_id(&self.root, &self.arena)
+            .unwrap()
+            .to_json()
+    }
+
+    pub fn to_pretty_json(&self) -> String {
+        TreeNode::from_node_id(&self.root, &self.arena)
+            .unwrap()
+            .to_pretty_json()
+    }
+
+    pub fn to_pretty_tree(&self) -> String {
+        let root = self.root;
+        format!("{}", root.debug_pretty_print(&self.arena))
     }
 }
 
