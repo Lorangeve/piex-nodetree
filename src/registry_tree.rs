@@ -119,6 +119,7 @@ fn make_search_dict(node_id: &NodeId, arena: &Arena<RegistriesItem>) -> HashMap<
         println!("{:?}", arena.get(child_node_id).unwrap().get().key_path);
         key_path.push(arena.get(child_node_id).unwrap().get().key_path.to_owned());
         dict.insert(key_path.to_str().unwrap().to_owned(), child_node_id);
+        key_path.pop();
     }
 
     println!("dict: {:#?}", dict);
