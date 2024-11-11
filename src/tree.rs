@@ -4,7 +4,7 @@ use indextree::{Arena, NodeId};
 use serde::Serialize;
 use serde_json;
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct TreeNode<T: Serialize> {
     data: T,
     children: Vec<TreeNode<T>>,
@@ -16,12 +16,12 @@ where
     T: Serialize + Clone + Debug,
 {
     // 自定义转换函数，用于将 NodeId 转换为 TreeNode
-    pub fn from_node_id(node: &NodeId, arena: &Arena<T>) -> Option<TreeNode<T>> {
+    pub fn from_node_id(node_id: &NodeId, arena: &Arena<T>) -> Option<TreeNode<T>> {
         // 获取节点数据并克隆
-        let data = arena.get(*node)?.get().to_owned();
+        let data = arena.get(*node_id)?.get().to_owned();
 
         // 递归构建子节点列表
-        let children: Vec<TreeNode<T>> = node
+        let children: Vec<TreeNode<T>> = node_id
             .children(arena)
             .filter_map(|child| TreeNode::from_node_id(&child, arena))
             .collect();

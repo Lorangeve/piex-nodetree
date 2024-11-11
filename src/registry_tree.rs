@@ -1,4 +1,4 @@
-use std::{cmp, collections::HashMap};
+use std::{cmp, collections::HashMap, path::PathBuf};
 
 pub use crate::tree::MakeTree;
 use crate::tree::*;
@@ -9,14 +9,15 @@ use windows_registry::{Key, Type, *};
 
 #[derive(Debug)]
 pub struct RegistriesTree {
-    pub root: NodeId,
-    pub arena: Arena<RegistriesItem>,
+    root: NodeId,
+    arena: Arena<RegistriesItem>,
+    dict: HashMap<String, NodeId>,
 }
 
 #[derive(Serialize, Clone, Debug)]
 pub struct RegistriesItem {
-    pub key_path: String,
-    pub value_map: HashMap<String, Option<RegistriesData>>,
+    key_path: String,
+    value_map: HashMap<String, Option<RegistriesData>>,
 }
 
 impl std::fmt::Display for RegistriesItem {
@@ -87,6 +88,7 @@ pub enum RegistriesData {
 impl MakeTree<RegistriesItem> for RegistriesTree {
     fn make_tree(speed: RegistriesItem) -> std::result::Result<Self, MakeTreeError> {
         let mut arena = Arena::new();
+
         let root = arena.new_node(speed);
         let key_path = arena.get(root).unwrap().get().key_path.to_owned();
 
@@ -99,14 +101,51 @@ impl MakeTree<RegistriesItem> for RegistriesTree {
             )
             .map_err(|e| MakeTreeError(e.message()))?;
 
-            Ok(RegistriesTree { root, arena })
+            let dict = make_search_dict(&root, &arena);
+
+            Ok(RegistriesTree { root, arena, dict })
         } else {
             Err(MakeTreeError("注册表路径错误！".to_owned()))
         }
     }
 }
 
+fn make_search_dict(node_id: &NodeId, arena: &Arena<RegistriesItem>) -> HashMap<String, NodeId> {
+    let mut dict: HashMap<String, NodeId> = HashMap::new();
+
+    let mut key_path = PathBuf::from(arena.get(*node_id).unwrap().get().key_path.to_owned());
+    for child_node_id in node_id.children(arena) {
+        println!("{:?}", child_node_id);
+        println!("{:?}", arena.get(child_node_id).unwrap().get().key_path);
+        key_path.push(arena.get(child_node_id).unwrap().get().key_path.to_owned());
+        dict.insert(key_path.to_str().unwrap().to_owned(), child_node_id);
+    }
+
+    println!("dict: {:#?}", dict);
+
+    dict
+}
+
 impl RegistriesTree {
+    pub fn sub_tree(&self, node_id: NodeId) -> Option<TreeNode<RegistriesItem>> {
+        TreeNode::from_node_id(&node_id, &self.arena)
+    }
+
+    fn make_search_dict(&self) {
+        // for node in self.arena.iter() {
+        //     println!("{:?}", self.arena.get_node_id(node));
+        //     println!("{:?}", node.get().key_path);
+        // }
+        println!("dict: {:#?}", self.dict);
+
+        println!(
+            "dict: {}",
+            TreeNode::from_node_id(&self.dict["HKLM"], &self.arena)
+                .unwrap()
+                .to_json()
+        );
+    }
+
     pub fn to_json(&self) -> String {
         TreeNode::from_node_id(&self.root, &self.arena)
             .unwrap()
@@ -128,13 +167,13 @@ impl RegistriesTree {
 fn fill_regkey_to_arena<'a>(
     key: &'a Key,
     path: impl AsRef<str>,
-    node: &NodeId,
+    node_id: &NodeId,
     arena: &mut Arena<RegistriesItem>,
 ) -> Result<()> {
     let key = key.open(&path)?;
     let children_keys: Vec<String> = key.keys()?.collect();
 
-    let value_map = &mut arena[*node].get_mut().value_map;
+    let value_map = &mut arena[*node_id].get_mut().value_map;
     for (key_name, key_value) in key.values()? {
         let value = key_value.try_into().ok();
         value_map.insert(key_name, value);
@@ -146,7 +185,7 @@ fn fill_regkey_to_arena<'a>(
             value_map: HashMap::new(),
         });
 
-        node.append(child_node, arena);
+        node_id.append(child_node, arena);
 
         if let Err(e) = fill_regkey_to_arena(&key, &children_key_name, &child_node, arena) {
             eprintln!("{}, Error: {}", &children_key_name, e);
