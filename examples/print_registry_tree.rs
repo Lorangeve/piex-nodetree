@@ -5,7 +5,7 @@ use piex_nodetree::{
 use std::env;
 
 fn main() {
-    let key_path = dbg!(env::args().nth(1).unwrap_or(String::from(r"HKLM\SOFTWARE")));
+    let key_path = dbg!(env::args().nth(1).unwrap_or(String::from(r"HKEY_LOCAL_MACHINE\SOFTWARE\Classes\MIME\Database\Content type")));
     let _is_print_json = dbg!(env::args().nth(2).map(|x| x == "json").unwrap_or(false));
 
     println!(
