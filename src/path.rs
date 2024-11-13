@@ -26,7 +26,7 @@ impl Path {
     }
 
     /// 获取路径分隔符
-    fn separator() -> String {
+    pub fn separator() -> String {
         #[cfg(windows)]
         return "\\".to_string();
         #[cfg(unix)]

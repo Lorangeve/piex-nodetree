@@ -18,7 +18,7 @@ pub struct RegistriesTree {
 #[derive(Serialize, Clone, Debug)]
 pub struct RegistriesItem {
     key_path: String,
-    value_map: HashMap<String, Option<RegistriesData>>,
+    value_map: HashMap<String, RegistriesData>,
 }
 
 impl std::fmt::Display for RegistriesItem {
@@ -28,30 +28,25 @@ impl std::fmt::Display for RegistriesItem {
 
         // 遍历 value_map 并打印每个键值对
         for (key, value) in &self.value_map {
-            match value {
-                Some(data) => {
-                    if let RegistriesData::Bytes(bytes) = data {
-                        let edge = bytes.len().saturating_sub(1);
-                        let endpos = cmp::min(edge, 10);
-                        let is_summary = endpos < edge;
+            if let RegistriesData::Bytes(bytes) = value {
+                let edge = bytes.len().saturating_sub(1);
+                let endpos = cmp::min(edge, 10);
+                let is_summary = endpos < edge;
 
-                        writeln!(
-                            f,
-                            "\t- {}:\t Bytes({}{})",
-                            key,
-                            bytes
-                                .iter()
-                                .take(endpos)
-                                .map(|&b| format!("0x{:02X}", b))
-                                .collect::<Vec<String>>()
-                                .join(","),
-                            if is_summary { "..." } else { "" }
-                        )?
-                    } else {
-                        writeln!(f, "\t- {}:\t{:?}", key, data)?
-                    }
-                }
-                None => writeln!(f, "\t- {}: None", key)?,
+                writeln!(
+                    f,
+                    "\t- {}:\t Bytes({}{})",
+                    key,
+                    bytes
+                        .iter()
+                        .take(endpos)
+                        .map(|&b| format!("0x{:02X}", b))
+                        .collect::<Vec<String>>()
+                        .join(","),
+                    if is_summary { "..." } else { "" }
+                )?
+            } else {
+                writeln!(f, "\t- {}:\t{:?}", key, value)?
             }
         }
 
@@ -67,12 +62,36 @@ impl std::fmt::Display for RegistriesTree {
     }
 }
 
+#[inline]
+fn map_reg_path(path: impl AsRef<str>) -> Option<String> {
+    let path = path.as_ref().to_uppercase();
+
+    let (rootkey_name, key_path) = path.split_once(Path::separator().as_str())?;
+    let rootkey_name = match rootkey_name {
+        "HKEY_LOCAL_MACHINE" => "HKLM",
+        "HKEY_CURRENT_USER" => "HKCU",
+        "HKEY_USERS" => "HKU",
+        _ => rootkey_name,
+    }
+    .to_string();
+
+    Some(rootkey_name + Path::separator().as_str() + key_path)
+}
+
 impl RegistriesItem {
-    pub fn new(key_path: String) -> Self {
+    pub fn new<T: AsRef<str>>(key_path: T) -> Self {
+        let path = map_reg_path(key_path).unwrap();
+
         RegistriesItem {
-            key_path,
+            key_path: path,
             value_map: HashMap::new(),
         }
+    }
+
+    pub fn get(&self, item_name: impl AsRef<str>) -> Option<RegistriesData> {
+        let item_value = self.value_map.get(item_name.as_ref())?;
+
+        Some(item_value.to_owned())
     }
 }
 
@@ -84,6 +103,7 @@ pub enum RegistriesData {
     MultiString(Vec<String>),
     Bytes(Vec<u8>),
     Raw(u32),
+    None,
 }
 
 impl MakeTree<RegistriesItem> for RegistriesTree {
@@ -93,8 +113,8 @@ impl MakeTree<RegistriesItem> for RegistriesTree {
         let root = arena.new_node(speed);
         let key_path = arena.get(root).unwrap().get().key_path.to_owned();
 
-        if let Some((rootkey_name, key_path)) = key_path.split_once("\\") {
-            let dict_key = Path::new();
+        if let Some((rootkey_name, key_path)) = key_path.split_once(Path::separator().as_str()) {
+            let mut dict_key = Path::from(rootkey_name);
             let mut dict = HashMap::new();
 
             fill_regkey_to_arena(
@@ -102,13 +122,12 @@ impl MakeTree<RegistriesItem> for RegistriesTree {
                 key_path,
                 &root,
                 &mut arena,
-                dict_key,
+                &mut dict_key,
                 &mut dict,
             )
             .map_err(|e| MakeTreeError(e.message()))?;
 
-            // make_search_dict(&root, &arena, dict_key, &mut dict);
-            println!("dict: {:#?}", dict);
+            // let dict = dbg!(dict);
 
             Ok(RegistriesTree { root, arena, dict })
         } else {
@@ -123,9 +142,23 @@ impl RegistriesTree {
     }
 
     pub fn get(&self, path: impl AsRef<str>) -> Option<&RegistriesItem> {
-        let node_id = self.dict.get(path.as_ref().to_uppercase().as_str())?;
+        let path = map_reg_path(path);
+
+        let node_id = self.dict.get(path?.as_str())?;
 
         Some(self.arena.get(*node_id)?.get())
+    }
+
+    pub fn get_with(
+        &self,
+        path: impl AsRef<str>,
+        item_name: impl AsRef<str>,
+    ) -> Option<RegistriesData> {
+        let reg_item = self.get(path.as_ref())?;
+
+        let item_value = reg_item.value_map.get(item_name.as_ref())?;
+
+        Some(item_value.to_owned())
     }
 
     pub fn to_json(&self) -> String {
@@ -152,18 +185,19 @@ fn fill_regkey_to_arena<'a>(
     path: impl AsRef<str>,
     node_id: &NodeId,
     arena: &mut Arena<RegistriesItem>,
-    mut dict_key: Path,
+    dict_key: &mut Path,
     dict: &mut HashMap<String, NodeId>,
 ) -> Result<()> {
     let key = key.open(&path)?;
     let children_keys = key.keys()?;
 
-    dict_key.push(&path.as_ref().to_uppercase());
+    // 向 search_dict 插值
+    dict_key.push(path.as_ref().to_uppercase());
     dict.insert(String::from(dict_key.path()), *node_id);
 
     let value_map = &mut arena[*node_id].get_mut().value_map;
     for (key_name, key_value) in key.values()? {
-        let value = key_value.try_into().ok();
+        let value = key_value.try_into().unwrap_or(RegistriesData::None);
         value_map.insert(key_name, value);
     }
 
@@ -175,14 +209,9 @@ fn fill_regkey_to_arena<'a>(
 
         node_id.append(child_node, arena);
 
-        if let Err(e) = fill_regkey_to_arena(
-            &key,
-            &children_key_name,
-            &child_node,
-            arena,
-            dict_key.clone(),
-            dict,
-        ) {
+        if let Err(e) =
+            fill_regkey_to_arena(&key, &children_key_name, &child_node, arena, dict_key, dict)
+        {
             eprintln!("{}, Error: {}", &children_key_name, e);
         } else {
             dict_key.pop();
